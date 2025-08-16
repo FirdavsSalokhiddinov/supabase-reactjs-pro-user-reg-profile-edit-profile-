@@ -35,12 +35,10 @@ export const AuthProvider = ({ children }) => {
 
   // Fetch profile and set user object
   const fetchUserProfile = async (uid) => {
-    // Use session user email instead of getUserById
     const currentSession = await supabase.auth.getSession();
     const email = currentSession.data.session?.user?.email || null;
     setUser({ id: uid, email });
 
-    // Fetch profile from profiles table
     const { data: profileData, error: profileError } = await supabase
       .from("profiles")
       .select("*")
@@ -69,26 +67,29 @@ export const AuthProvider = ({ children }) => {
     });
   };
 
-  // Sign in: by username (maps to email)
-  const signIn = async ({ username, password }) => {
-    // Get profile by username
-    const { data: profileData, error: profileError } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("username", username)
-      .single();
-    if (profileError || !profileData) throw new Error("User not found");
-
-    // Sign in with email from session user
+  // Sign in: now using only email + password
+  const signIn = async ({ email, password }) => {
     const { data: sessionData, error: signInError } = await supabase.auth.signInWithPassword({
-      email: profileData.email || "", // We don't store email in profile, use session mapping
+      email,
       password,
     });
 
-    // Instead, we get session after signIn
     if (signInError) throw signInError;
 
-    await fetchUserProfile(profileData.user_id);
+    // Load profile into context
+    const { data: profileData, error: profileError } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("user_id", sessionData.user.id)
+      .single();
+
+    if (!profileError && profileData) setProfile(profileData);
+
+    setUser({ id: sessionData.user.id, email });
+    setSession(sessionData);
+
+    localStorage.setItem("user", JSON.stringify({ id: sessionData.user.id, email }));
+    if (profileData) localStorage.setItem("profile", JSON.stringify(profileData));
   };
 
   const signOut = async () => {
